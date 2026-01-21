@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project Monitoring Dashboard</title>
+
+    <!-- CRITICAL: Auth check BEFORE anything else loads -->
+    <script>
+      (function () {
+        const isLoggedIn = localStorage.getItem("isLoggedIn");
+        const userEmail = localStorage.getItem("userEmail");
+        if (!isLoggedIn || !userEmail) {
+          window.location.replace("../login/login.html");
+        }
+      })();
+    </script>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- Prevent flash of content before auth check -->
+    <style>
+      body {
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      body.authenticated {
+        opacity: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="dashboard-container">
+      <!-- Header Section -->
+      <div class="dashboard-header">
+        <div class="header-content">
+          <div class="header-left">
+            <div class="header-icon">
+              <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="header-text">
+              <h1 class="dashboard-title">Kompartemen Transformasi Bisnis</h1>
+              <p class="dashboard-subtitle">Monitoring progres proyek tranformasi bisnis tahun berjalan</p>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <div class="user-info" id="userInfo" style="display: flex; align-items: center; gap: 12px">
+              <div class="user-email" id="userEmail" style="font-size: 13px; font-weight: 600; color: var(--text-secondary)"></div>
+              <button
+                class="logout-btn"
+                onclick="handleLogout()"
+                style="padding: 11px 18px; border: 1px solid var(--border-color); background: white; border-radius: 10px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.3s ease"
+              >
+                <i class="fas fa-sign-out-alt"></i> Logout
+              </button>
+            </div>
+            <button
+              class="debug-btn"
+              onclick="showDebugInfo()"
+              style="margin-left: 12px; padding: 11px 18px; border: 1px solid var(--border-color); background: white; border-radius: 10px; cursor: pointer; font-size: 12px; font-weight: 600; display: none"
+              id="debugBtn"
+            >
+              <i class="fas fa-bug"></i> Debug
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Cards -->
+      <div class="stats-grid">
+        <div class="stat-card stat-card-blue">
+          <div class="stat-icon">
+            <i class="fas fa-project-diagram"></i>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" id="totalProjects">-</div>
+            <div class="stat-label">Total Proyek</div>
+          </div>
+        </div>
+
+        <div class="stat-card stat-card-orange">
+          <div class="stat-icon">
+            <i class="fas fa-clock"></i>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" id="inProgressProjects">-</div>
+            <div class="stat-label">In Progress</div>
+          </div>
+        </div>
+
+        <div class="stat-card stat-card-green">
+          <div class="stat-icon">
+            <i class="fas fa-check-circle"></i>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" id="completedProjects">-</div>
+            <div class="stat-label">Completed</div>
+          </div>
+        </div>
+
+        <div class="stat-card stat-card-purple">
+          <div class="stat-icon">
+            <i class="fas fa-calendar-alt"></i>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" id="totalMandays">-</div>
+            <div class="stat-label">Est. Mandays</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Content -->
+      <div class="main-content">
+        <!-- Chart Card -->
+        <div class="chart-card clickable-chart">
+          <div class="chart-header">
+            <h3><i class="fas fa-building"></i> By Department</h3>
+            <span class="chart-period">Active</span>
+          </div>
+
+          <div class="chart-body">
+            <canvas id="departmentPieChart"></canvas>
+          </div>
+
+          <div class="chart-legend">
+            <div class="legend-item" onclick="showDepartmentDetail('All')">
+              <span class="legend-dot" style="background: #f97316"></span>
+              <span class="legend-label">All Departments</span>
+              <span class="legend-value" id="allCount">-</span>
+            </div>
+
+            <div class="legend-item" onclick="showDepartmentDetail('Riset')">
+              <span class="legend-dot" style="background: #8b5cf6"></span>
+              <span class="legend-label">Riset</span>
+              <span class="legend-value" id="risetCount">-</span>
+            </div>
+
+            <div class="legend-item" onclick="showDepartmentDetail('Digitalisasi')">
+              <span class="legend-dot" style="background: #3b82f6"></span>
+              <span class="legend-label">Digitalisasi</span>
+              <span class="legend-value" id="digitalisasiCount">-</span>
+            </div>
+
+            <div class="legend-item" onclick="showDepartmentDetail('System Development')">
+              <span class="legend-dot" style="background: #10b981"></span>
+              <span class="legend-label">System Development</span>
+              <span class="legend-value" id="systemCount">-</span>
+            </div>
+          </div>
+
+          <div class="click-hint"><i class="fas fa-info-circle"></i> Klik department untuk melihat projects detail</div>
+        </div>
+
+        <!-- Project Detail Section -->
+        <div class="detail-section-card">
+          <div class="detail-header">
+            <h3><i class="fas fa-list-ul"></i> Project Details</h3>
+            <span class="detail-period" id="activeDeptLabel">All Departments</span>
+          </div>
+
+          <!-- Status Summary Cards -->
+          <div class="status-summary-cards" id="statusSummaryCards">
+            <div class="status-summary-card complete">
+              <div class="status-summary-icon">
+                <i class="fas fa-check-circle"></i>
+              </div>
+              <div class="status-summary-info">
+                <div class="status-summary-value" id="summaryCompleteCount">-</div>
+                <div class="status-summary-label">Complete</div>
+              </div>
+            </div>
+            <div class="status-summary-card in-progress">
+              <div class="status-summary-icon">
+                <i class="fas fa-spinner"></i>
+              </div>
+              <div class="status-summary-info">
+                <div class="status-summary-value" id="summaryProgressCount">-</div>
+                <div class="status-summary-label">In Progress</div>
+              </div>
+            </div>
+            <div class="status-summary-card outstanding">
+              <div class="status-summary-icon">
+                <i class="fas fa-clock"></i>
+              </div>
+              <div class="status-summary-info">
+                <div class="status-summary-value" id="summaryOutstandingCount">-</div>
+                <div class="status-summary-label">Outstanding</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="detail-body" id="projectDetailsList">
+            <div class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading projects...</span>
+            </div>
+          </div>
+
+          <button class="view-all-btn" onclick="showDetailModal()">View All Projects <i class="fas fa-arrow-right"></i></button>
+        </div>
+
+        <!-- ToDo Card -->
+        <div class="todo-card">
+          <div class="todo-header">
+            <div class="todo-title">
+              <i class="fas fa-tasks"></i>
+              <span>To-Do List</span>
+            </div>
+
+            <div class="todo-filters">
+              <select id="departmentFilter" class="filter-select" onchange="applyFilters()">
+                <option value="all">All Departments</option>
+                <option value="Riset">Riset</option>
+                <option value="Digitalisasi">Digitalisasi</option>
+                <option value="System Development">System Development</option>
+              </select>
+
+              <select id="dueDateFilter" class="filter-select" onchange="applyFilters()">
+                <option value="all">All Tasks</option>
+                <option value="today">Today</option>
+                <option value="tomorrow">Tomorrow</option>
+                <option value="this-week">This Week</option>
+                <option value="overdue">Overdue</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="todo-count-badge"><span id="todoCount">-</span> tasks pending</div>
+
+          <div class="todo-list" id="todoList">
+            <div class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading data from Google Sheets...</span>
+            </div>
+          </div>
+
+          <button class="view-all-btn" onclick="showTodoModal()">View All Tasks <i class="fas fa-arrow-right"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Detail Modal -->
+    <div id="detailModal" class="modal">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2><i class="fas fa-list-alt"></i> All Projects</h2>
+          <button class="modal-close" onclick="closeDetailModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="detail-filters"></div>
+          <div id="detailModalContent">
+            <div class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading projects...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ToDo Modal -->
+    <div id="todoModal" class="modal">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2><i class="fas fa-tasks"></i> Task Management</h2>
+          <button class="modal-close" onclick="closeTodoModal()">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="todo-tabs">
+            <button class="todo-tab active" data-tab="pending">
+              <i class="fas fa-calendar-check"></i> Pending
+              <span class="tab-count" id="pendingTabCount">(0)</span>
+            </button>
+            <button class="todo-tab" data-tab="progress">
+              <i class="fas fa-spinner"></i> In Progress
+              <span class="tab-count" id="progressTabCount">(0)</span>
+            </button>
+            <button class="todo-tab" data-tab="done">
+              <i class="fas fa-check-circle"></i> Completed
+              <span class="tab-count" id="doneTabCount">(0)</span>
+            </button>
+          </div>
+
+          <div class="todo-tab-content">
+            <div class="todo-tab-pane active" id="tabPending"></div>
+            <div class="todo-tab-pane" id="tabProgress"></div>
+            <div class="todo-tab-pane" id="tabDone"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Authentication Check -->
+    <script src="../login/auth.js"></script>
+
+    <!-- Custom JS -->
+    <script src="script.js"></script>
+  </body>
+</html>
