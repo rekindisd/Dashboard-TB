@@ -12,7 +12,7 @@ const PROJECTS_RANGE = "A:M";
 
 const TODO_SPREADSHEET_ID = "1OApZRZFEj-RgtyrFq2wrRCIdUX6Spk6Y-MrGc4fZSOM";
 const TODO_SHEET_NAME = "Sheet1";
-const TODO_RANGE = "A:G";
+const TODO_RANGE = "A:I"; // Updated range to include new columns
 
 const API_KEY = "AIzaSyA2aIyDp9P2NoxsH2efHpANcfKwsWL1RXw";
 
@@ -20,7 +20,11 @@ let projectsData = [];
 let departmentData = {};
 let todoData = [];
 let departmentPieChart = null;
-let currentActiveDepartment = "All"; // Track active department
+let currentActiveDepartment = "All";
+
+// Filter states for ToDo Modal
+let currentStatusFilter = "all";
+let currentCategoryFilter = "all";
 
 document.addEventListener("DOMContentLoaded", function () {
   loadAllData();
@@ -35,7 +39,7 @@ async function loadAllData() {
   try {
     await Promise.all([loadProjectsData(), loadTodoData()]);
     updateStatistics();
-    updateProjectDetails(); // Will show "All" by default
+    updateProjectDetails();
     initializeDepartmentChart();
     updateTodoList();
   } catch (error) {
@@ -169,6 +173,7 @@ async function loadTodoData() {
     const data = await response.json();
 
     if (data.values && data.values.length > 1) {
+      const headers = data.values[0];
       const rows = data.values.slice(1);
 
       todoData = rows
@@ -176,18 +181,50 @@ async function loadTodoData() {
           no: row[0] || "-",
           tipe: row[1] || "-",
           departemen: row[2] || "-",
-          item: row[3] || "-",
-          pic: row[4] || "-",
-          dueDate: row[5] || "-",
-          status: normalizeStatus(row[6]),
+          category: row[3] || "-", // NEW: Category
+          item: row[4] || "-",
+          pic: row[5] || "-",
+          startDate: row[6] || "-", // NEW: Start Date
+          endDate: row[7] || "-", // NEW: End Date
+          status: normalizeStatus(row[8]), // Status moved to column 9
         }))
         .filter((task) => task.item !== "-" && task.item);
 
       console.log("✅ To-Do data loaded:", todoData.length, "items");
+
+      // Populate category filter
+      populateCategoryFilters();
     }
   } catch (error) {
     console.error("Error loading to-do data:", error);
     throw error;
+  }
+}
+
+function populateCategoryFilters() {
+  // Get unique categories
+  const categories = [...new Set(todoData.map((task) => task.category))].filter((cat) => cat !== "-").sort();
+
+  // Populate home filter
+  const homeFilter = document.getElementById("categoryFilterHome");
+  if (homeFilter) {
+    homeFilter.innerHTML = '<option value="all">All Categories</option>';
+    categories.forEach((cat) => {
+      const option = document.createElement("option");
+      option.value = cat;
+      option.textContent = cat;
+      homeFilter.appendChild(option);
+    });
+  }
+
+  // Populate modal filter
+  const modalFilterChips = document.getElementById("categoryFilterChips");
+  if (modalFilterChips) {
+    let html = '<button class="filter-chip-modal active" data-category="all" onclick="filterTodoModal(\'category\', \'all\')">All Categories</button>';
+    categories.forEach((cat) => {
+      html += `<button class="filter-chip-modal" data-category="${escapeHtml(cat)}" onclick="filterTodoModal('category', '${escapeHtml(cat)}')">${escapeHtml(cat)}</button>`;
+    });
+    modalFilterChips.innerHTML = html;
   }
 }
 
@@ -271,30 +308,28 @@ function updateStatistics() {
 }
 
 // ===================================
-// PROJECT DETAILS UPDATE - WITH DEPARTMENT FILTER & STATUS SUMMARY
+// PROJECT DETAILS UPDATE
 // ===================================
 
 function updateProjectDetails(departmentFilter = "All") {
   const detailsList = document.getElementById("projectDetailsList");
-  currentActiveDepartment = departmentFilter; // Save current filter
+  currentActiveDepartment = departmentFilter;
 
-  // Update department label di header
   const deptLabel = document.getElementById("activeDeptLabel");
   if (deptLabel) {
     deptLabel.textContent = departmentFilter === "All" ? "All Departments" : departmentFilter;
 
-    // Update warna badge sesuai department (SOLID COLOR - NO GRADIENT)
     if (departmentFilter === "All") {
-      deptLabel.style.background = "#f97316"; // Orange
+      deptLabel.style.background = "#f97316";
       deptLabel.style.boxShadow = "0 4px 8px rgba(249, 115, 22, 0.3)";
     } else if (departmentFilter === "Riset") {
-      deptLabel.style.background = "#8b5cf6"; // Purple
+      deptLabel.style.background = "#8b5cf6";
       deptLabel.style.boxShadow = "0 4px 8px rgba(139, 92, 246, 0.3)";
     } else if (departmentFilter === "Digitalisasi") {
-      deptLabel.style.background = "#3b82f6"; // Blue
+      deptLabel.style.background = "#3b82f6";
       deptLabel.style.boxShadow = "0 4px 8px rgba(59, 130, 246, 0.3)";
     } else if (departmentFilter === "System Development") {
-      deptLabel.style.background = "#10b981"; // Green
+      deptLabel.style.background = "#10b981";
       deptLabel.style.boxShadow = "0 4px 8px rgba(16, 185, 129, 0.3)";
     }
   }
@@ -304,7 +339,6 @@ function updateProjectDetails(departmentFilter = "All") {
     return;
   }
 
-  // Filter activities by department
   let filteredActivities = projectsData.filter((task) => !task.isTotalRow);
   if (departmentFilter !== "All") {
     filteredActivities = filteredActivities.filter((task) => task.departemen === departmentFilter);
@@ -338,7 +372,6 @@ function updateProjectDetails(departmentFilter = "All") {
 
   const projects = Object.values(projectGroups);
 
-  // Calculate status summary
   let completeProjects = 0;
   let progressProjects = 0;
   let outstandingProjects = 0;
@@ -357,12 +390,10 @@ function updateProjectDetails(departmentFilter = "All") {
     }
   });
 
-  // Update status summary cards
   document.getElementById("summaryCompleteCount").textContent = completeProjects;
   document.getElementById("summaryProgressCount").textContent = progressProjects;
   document.getElementById("summaryOutstandingCount").textContent = outstandingProjects;
 
-  // Build HTML for projects
   let htmlContent = "";
 
   if (projects.length === 0) {
@@ -407,14 +438,12 @@ function updateProjectDetails(departmentFilter = "All") {
           <span class="progress-percentage">${project.activities.length > 0 ? ((project.completed / project.activities.length) * 100).toFixed(0) : 0}%</span>
         </div>
       </div>
-    `
+    `,
       )
       .join("");
   }
 
   detailsList.innerHTML = htmlContent;
-
-  // Update legend active states
   updateLegendActiveStates();
 }
 
@@ -424,21 +453,15 @@ function updateProjectDetails(departmentFilter = "All") {
 
 function showDepartmentDetail(departmentName) {
   console.log("🔘 Clicked department:", departmentName);
-
-  // Update the project details section without modal
   updateProjectDetails(departmentName);
-
-  // Update legend active states
   updateLegendActiveStates();
 }
 
 function updateLegendActiveStates() {
-  // Remove all active classes
   document.querySelectorAll(".legend-item").forEach((item) => {
     item.classList.remove("active");
   });
 
-  // Add active class to current department
   const legendItems = document.querySelectorAll(".legend-item");
   legendItems.forEach((item) => {
     const onclick = item.getAttribute("onclick");
@@ -452,7 +475,6 @@ function updateLegendActiveStates() {
   });
 }
 
-// Show project activities - direct from homepage
 function showProjectActivitiesModal(projectId) {
   const modal = document.getElementById("detailModal");
   if (!modal) return;
@@ -481,13 +503,11 @@ function showProjectActivitiesModal(projectId) {
     </div>
   `;
 
-  // HIDE filters when opening from homepage project click
   const filtersDiv = modal.querySelector(".detail-filters");
   if (filtersDiv) {
     filtersDiv.style.display = "none";
   }
 
-  // Show ALL activities without filtering
   let displayActivities = activities;
 
   const content = document.getElementById("detailModalContent");
@@ -600,7 +620,7 @@ function showProjectActivitiesModal(projectId) {
           <span class="total-value">${activity.mandays} days</span>
         </div>
       </div>
-    `
+    `,
       )
       .join("");
 
@@ -634,7 +654,6 @@ function backToProjectsList() {
   const filtersDiv = modal.querySelector(".detail-filters");
   if (filtersDiv) filtersDiv.style.display = "flex";
 
-  // Reset active status filter to "all"
   document.querySelectorAll("[data-status]").forEach((btn) => {
     if (btn.getAttribute("data-status") === "all") {
       btn.classList.add("active");
@@ -643,7 +662,6 @@ function backToProjectsList() {
     }
   });
 
-  // Re-render the modal content with filters (showing ALL status by default)
   filterDetailModal();
 }
 
@@ -686,7 +704,7 @@ function formatDate(dateString) {
 }
 
 // ===================================
-// TODO LIST UPDATE
+// TODO LIST UPDATE - IMPROVED
 // ===================================
 
 function updateTodoList() {
@@ -711,16 +729,15 @@ function createTodoItem(task) {
   const div = document.createElement("div");
   div.className = "todo-item";
 
-  div.setAttribute("data-due", task.dueDate);
   div.setAttribute("data-status", task.status);
   div.setAttribute("data-department", task.departemen);
+  div.setAttribute("data-category", task.category);
 
   const isChecked = task.status === "Complete";
   if (isChecked) {
     div.classList.add("checked");
   }
 
-  const dueDateDisplay = formatDueDate(task.dueDate);
   const formattedItem = formatItemText(task.item);
 
   div.innerHTML = `
@@ -729,7 +746,7 @@ function createTodoItem(task) {
       <div class="todo-item-title">${formattedItem}</div>
       <div class="todo-item-meta">
         <span class="todo-item-pic"><i class="fas fa-user"></i> ${escapeHtml(task.pic)}</span>
-        <span class="todo-item-due ${getDueDateClass(task.dueDate)}">${dueDateDisplay}</span>
+        ${task.category !== "-" ? `<span class="todo-item-category"><i class="fas fa-tag"></i> ${escapeHtml(task.category)}</span>` : ""}
       </div>
       <span class="todo-item-status status-${task.status.toLowerCase().replace(" ", "-")}">${task.status}</span>
     </div>
@@ -748,98 +765,10 @@ function formatItemText(text) {
   return escaped.replace(/\n/g, "<br>").replace(/\r\n/g, "<br>");
 }
 
-function formatDueDate(dueDate) {
-  if (!dueDate || dueDate === "-" || dueDate === "NaN" || dueDate === "nan") {
-    return "No due date";
-  }
-
-  try {
-    const date = new Date(dueDate);
-    if (isNaN(date.getTime())) {
-      return "No due date";
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const dueDateTime = new Date(date);
-    dueDateTime.setHours(0, 0, 0, 0);
-
-    if (dueDateTime.getTime() === today.getTime()) {
-      return "Due: Today";
-    } else if (dueDateTime.getTime() === tomorrow.getTime()) {
-      return "Due: Tomorrow";
-    } else if (dueDateTime < today) {
-      const options = { month: "short", day: "numeric" };
-      return `Overdue (${date.toLocaleDateString("en-US", options)})`;
-    } else {
-      const options = { month: "short", day: "numeric" };
-      return `Due: ${date.toLocaleDateString("en-US", options)}`;
-    }
-  } catch (e) {
-    return "No due date";
-  }
-}
-
-function getDueDateClass(dueDate) {
-  if (!dueDate || dueDate === "-" || dueDate === "NaN" || dueDate === "nan") {
-    return "";
-  }
-
-  try {
-    const date = new Date(dueDate);
-    if (isNaN(date.getTime())) {
-      return "";
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dueDateTime = new Date(date);
-    dueDateTime.setHours(0, 0, 0, 0);
-
-    if (dueDateTime < today) {
-      return "overdue";
-    }
-    return "";
-  } catch (e) {
-    return "";
-  }
-}
-
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
-}
-
-function getPriorityText(priority) {
-  if (priority === "1" || priority === 1) return "High";
-  if (priority === "2" || priority === 2) return "Medium";
-  if (priority === "3" || priority === 3) return "Low";
-
-  const priorityStr = priority.toString().toLowerCase();
-  if (priorityStr === "high") return "High";
-  if (priorityStr === "medium") return "Medium";
-  if (priorityStr === "low") return "Low";
-  if (priorityStr === "critical") return "Critical";
-
-  return priority;
-}
-
-function getPriorityClass(priority) {
-  if (priority === "1" || priority === 1) return "high";
-  if (priority === "2" || priority === 2) return "medium";
-  if (priority === "3" || priority === 3) return "low";
-
-  const priorityStr = priority.toString().toLowerCase();
-  if (priorityStr === "high") return "high";
-  if (priorityStr === "medium") return "medium";
-  if (priorityStr === "low") return "low";
-  if (priorityStr === "critical") return "critical";
-
-  return "medium";
 }
 
 // ===================================
@@ -944,7 +873,6 @@ function initializeDepartmentChart() {
     },
   });
 
-  // Set initial active state
   updateLegendActiveStates();
 }
 
@@ -982,13 +910,13 @@ function updateTodoCount() {
 
   const badge = document.querySelector(".todo-count-badge");
   const deptFilter = document.getElementById("departmentFilter")?.value || "all";
-  const dateFilter = document.getElementById("dueDateFilter")?.value || "all";
+  const catFilter = document.getElementById("categoryFilterHome")?.value || "all";
 
   let filterText = "";
-  if (deptFilter !== "all" || dateFilter !== "all") {
+  if (deptFilter !== "all" || catFilter !== "all") {
     const filters = [];
     if (deptFilter !== "all") filters.push(deptFilter);
-    if (dateFilter !== "all") filters.push(dateFilter.replace("-", " "));
+    if (catFilter !== "all") filters.push(catFilter);
     filterText = ` (${filters.join(", ")})`;
   }
 
@@ -1003,46 +931,21 @@ function updateTodoCount() {
 
 function applyFilters() {
   const departmentFilter = document.getElementById("departmentFilter").value;
-  const dueDateFilter = document.getElementById("dueDateFilter").value;
+  const categoryFilter = document.getElementById("categoryFilterHome").value;
 
   const todoList = document.getElementById("todoList");
   if (!todoList) return;
 
   const todoItems = todoList.querySelectorAll(".todo-item");
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   todoItems.forEach((item) => {
     const itemDept = item.getAttribute("data-department");
-    const dueDate = item.getAttribute("data-due");
+    const itemCategory = item.getAttribute("data-category");
 
-    let passDeptFilter = false;
-    if (departmentFilter === "all") {
-      passDeptFilter = true;
-    } else {
-      passDeptFilter = itemDept === departmentFilter;
-    }
+    let passDeptFilter = departmentFilter === "all" || itemDept === departmentFilter;
+    let passCategoryFilter = categoryFilter === "all" || itemCategory === categoryFilter;
 
-    let passDateFilter = false;
-
-    if (dueDateFilter === "all") {
-      passDateFilter = true;
-    } else {
-      if (!dueDate || dueDate === "-" || dueDate === "NaN" || dueDate === "nan") {
-        passDateFilter = false;
-      } else {
-        const itemDate = parseDateSafely(dueDate);
-
-        if (itemDate) {
-          passDateFilter = checkDateFilter(itemDate, today, dueDateFilter);
-        } else {
-          passDateFilter = false;
-        }
-      }
-    }
-
-    if (passDeptFilter && passDateFilter) {
+    if (passDeptFilter && passCategoryFilter) {
       item.classList.remove("hidden");
     } else {
       item.classList.add("hidden");
@@ -1052,50 +955,8 @@ function applyFilters() {
   updateTodoCount();
 }
 
-function parseDateSafely(dateString) {
-  try {
-    const date = new Date(dateString);
-
-    if (isNaN(date.getTime())) {
-      return null;
-    }
-
-    date.setHours(0, 0, 0, 0);
-    return date;
-  } catch (e) {
-    return null;
-  }
-}
-
-function checkDateFilter(itemDate, today, filter) {
-  switch (filter) {
-    case "today":
-      return isSameDay(itemDate, today);
-
-    case "tomorrow":
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      return isSameDay(itemDate, tomorrow);
-
-    case "this-week":
-      const weekEnd = new Date(today);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-      return itemDate >= today && itemDate <= weekEnd;
-
-    case "overdue":
-      return itemDate < today;
-
-    default:
-      return true;
-  }
-}
-
-function isSameDay(date1, date2) {
-  return date1.getFullYear() === date2.getFullYear() && date1.getMonth() === date2.getMonth() && date1.getDate() === date2.getDate();
-}
-
 // ===================================
-// DETAIL MODAL FUNCTIONS - WITH STATUS FILTER
+// DETAIL MODAL FUNCTIONS
 // ===================================
 
 function showDetailModal() {
@@ -1277,13 +1138,13 @@ function filterDetailModal() {
         <span class="progress-percentage">${project.activities.length > 0 ? ((project.completed / project.activities.length) * 100).toFixed(0) : 0}%</span>
       </div>
     </div>
-  `
+  `,
     )
     .join("");
 }
 
 // ===================================
-// TODO MODAL FUNCTIONS
+// TODO MODAL FUNCTIONS - IMPROVED
 // ===================================
 
 function showTodoModal() {
@@ -1291,8 +1152,12 @@ function showTodoModal() {
   if (modal) {
     modal.classList.add("show");
     document.body.style.overflow = "hidden";
-    updateModalContent();
-    switchTodoTab("pending");
+
+    // Reset filters
+    currentStatusFilter = "all";
+    currentCategoryFilter = "all";
+
+    updateTodoModalContent();
   }
 }
 
@@ -1304,116 +1169,140 @@ function closeTodoModal() {
   }
 }
 
-function updateModalContent() {
-  const pendingTasks = todoData.filter((t) => t.status === "Outstanding");
-  const progressTasks = todoData.filter((t) => t.status === "In Progress");
-  const doneTasks = todoData.filter((t) => t.status === "Complete");
+function filterTodoModal(filterType, value) {
+  if (filterType === "status") {
+    currentStatusFilter = value;
 
-  document.getElementById("pendingTabCount").textContent = `(${pendingTasks.length})`;
-  document.getElementById("progressTabCount").textContent = `(${progressTasks.length})`;
-  document.getElementById("doneTabCount").textContent = `(${doneTasks.length})`;
+    // Update active button
+    document.querySelectorAll("[data-status]").forEach((btn) => {
+      if (btn.getAttribute("data-status") === value) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+  } else if (filterType === "category") {
+    currentCategoryFilter = value;
 
-  updateModalTab("tabPending", pendingTasks, "planned");
-  updateModalTab("tabProgress", progressTasks, "progress");
-  updateModalTab("tabDone", doneTasks, "done");
+    // Update active button
+    document.querySelectorAll("[data-category]").forEach((btn) => {
+      if (btn.getAttribute("data-category") === value) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+  }
+
+  updateTodoModalContent();
 }
 
-function updateModalTab(tabId, tasks, statusClass) {
-  const tab = document.getElementById(tabId);
-  if (!tab) return;
+function updateTodoModalContent() {
+  let filteredTasks = todoData;
 
-  if (tasks.length === 0) {
-    tab.innerHTML = '<div class="no-data">No tasks in this category</div>';
+  // Apply status filter
+  if (currentStatusFilter !== "all") {
+    filteredTasks = filteredTasks.filter((task) => task.status === currentStatusFilter);
+  }
+
+  // Apply category filter
+  if (currentCategoryFilter !== "all") {
+    filteredTasks = filteredTasks.filter((task) => task.category === currentCategoryFilter);
+  }
+
+  // Update stats
+  const totalCount = filteredTasks.length;
+  const outstandingCount = filteredTasks.filter((t) => t.status === "Outstanding").length;
+  const progressCount = filteredTasks.filter((t) => t.status === "In Progress").length;
+  const completeCount = filteredTasks.filter((t) => t.status === "Complete").length;
+
+  document.getElementById("totalTasksCount").textContent = totalCount;
+  document.getElementById("outstandingTasksCount").textContent = outstandingCount;
+  document.getElementById("progressTasksCount").textContent = progressCount;
+  document.getElementById("completeTasksCount").textContent = completeCount;
+
+  // Render tasks
+  const content = document.getElementById("todoModalContent");
+
+  if (filteredTasks.length === 0) {
+    content.innerHTML = '<div class="no-data">No tasks found with the selected filters</div>';
     return;
   }
 
-  tab.innerHTML = tasks
-    .map(
-      (task) => `
-    <div class="todo-item-modal ${statusClass === "done" ? "done" : ""}">
-      <i class="fas ${getStatusIcon(statusClass)} todo-status-icon status-${statusClass}"></i>
-      <div class="todo-item-content">
-        <h4>${formatItemText(task.item)}</h4>
-        <p><strong>PIC:</strong> ${escapeHtml(task.pic)} | <strong>Department:</strong> ${escapeHtml(task.departemen)} | <strong>Type:</strong> ${escapeHtml(task.tipe)}</p>
-        <span class="todo-meta">
-          <i class="fas fa-calendar"></i> 
-          ${task.dueDate && task.dueDate !== "-" ? formatDueDate(task.dueDate) : "No due date"}
-        </span>
+  content.innerHTML = filteredTasks.map((task) => createTodoModalCard(task)).join("");
+}
+
+function createTodoModalCard(task) {
+  const statusClass = task.status.toLowerCase().replace(" ", "-");
+  const statusIcon = task.status === "Complete" ? "fa-check-circle" : task.status === "In Progress" ? "fa-spinner" : "fa-clock";
+
+  return `
+    <div class="todo-card-modal">
+      <div class="todo-card-header">
+        <div class="todo-card-status status-${statusClass}">
+          <i class="fas ${statusIcon}"></i>
+          <span>${task.status}</span>
+        </div>
+        ${task.category !== "-" ? `<div class="todo-card-category"><i class="fas fa-tag"></i> ${escapeHtml(task.category)}</div>` : ""}
+      </div>
+      
+      <div class="todo-card-body">
+        <h4 class="todo-card-title">${formatItemText(task.item)}</h4>
+        
+        <div class="todo-card-info-grid">
+          <div class="info-item">
+            <span class="info-icon"><i class="fas fa-hashtag"></i></span>
+            <div class="info-content">
+              <span class="info-label">No</span>
+              <span class="info-value">${escapeHtml(task.no)}</span>
+            </div>
+          </div>
+          
+          <div class="info-item">
+            <span class="info-icon"><i class="fas fa-tag"></i></span>
+            <div class="info-content">
+              <span class="info-label">Tipe</span>
+              <span class="info-value">${escapeHtml(task.tipe)}</span>
+            </div>
+          </div>
+          
+          <div class="info-item">
+            <span class="info-icon"><i class="fas fa-building"></i></span>
+            <div class="info-content">
+              <span class="info-label">Departemen</span>
+              <span class="info-value">${escapeHtml(task.departemen)}</span>
+            </div>
+          </div>
+          
+          <div class="info-item">
+            <span class="info-icon"><i class="fas fa-user"></i></span>
+            <div class="info-content">
+              <span class="info-label">PIC</span>
+              <span class="info-value">${escapeHtml(task.pic)}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="todo-card-timeline">
+          <div class="timeline-item">
+            <i class="fas fa-calendar-check"></i>
+            <div class="timeline-content">
+              <span class="timeline-label">Start Date</span>
+              <span class="timeline-value">${task.startDate !== "-" ? formatDate(task.startDate) : "Not set"}</span>
+            </div>
+          </div>
+          <div class="timeline-separator">→</div>
+          <div class="timeline-item">
+            <i class="fas fa-calendar-times"></i>
+            <div class="timeline-content">
+              <span class="timeline-label">End Date</span>
+              <span class="timeline-value">${task.endDate !== "-" ? formatDate(task.endDate) : "Not set"}</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  `
-    )
-    .join("");
-}
-
-function getStatusIcon(statusClass) {
-  switch (statusClass) {
-    case "planned":
-      return "fa-circle";
-    case "progress":
-      return "fa-spinner";
-    case "done":
-      return "fa-check-circle";
-    default:
-      return "fa-circle";
-  }
-}
-
-function switchTodoTab(tabName) {
-  const tabs = document.querySelectorAll(".todo-tab");
-  tabs.forEach((tab) => {
-    if (tab.getAttribute("data-tab") === tabName) {
-      tab.classList.add("active");
-    } else {
-      tab.classList.remove("active");
-    }
-  });
-
-  const panes = document.querySelectorAll(".todo-tab-pane");
-  panes.forEach((pane) => {
-    const paneId = "tab" + tabName.charAt(0).toUpperCase() + tabName.slice(1);
-    if (pane.id === paneId) {
-      pane.classList.add("active");
-    } else {
-      pane.classList.remove("active");
-    }
-  });
-}
-
-function formatDateCompact(dateString) {
-  if (!dateString || dateString === "-") return "-";
-
-  try {
-    let date;
-
-    if (dateString.includes("/")) {
-      const parts = dateString.split("/");
-      if (parts.length === 3) {
-        const day = parseInt(parts[0]);
-        const month = parseInt(parts[1]);
-        const year = parseInt(parts[2]);
-
-        if (day > 12) {
-          date = new Date(year, month - 1, day);
-        } else {
-          date = new Date(year, month - 1, day);
-        }
-      }
-    } else {
-      date = new Date(dateString);
-    }
-
-    if (isNaN(date.getTime())) return dateString;
-
-    const monthNamesShort = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
-    const day = date.getDate();
-    const month = monthNamesShort[date.getMonth()];
-
-    return `${day} ${month}`;
-  } catch (e) {
-    console.error("Error formatting compact date:", dateString, e);
-    return dateString;
-  }
+  `;
 }
 
 // ===================================
@@ -1421,14 +1310,6 @@ function formatDateCompact(dateString) {
 // ===================================
 
 function setupEventListeners() {
-  const tabs = document.querySelectorAll(".todo-tab");
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", function () {
-      const tabName = this.getAttribute("data-tab");
-      switchTodoTab(tabName);
-    });
-  });
-
   window.addEventListener("click", function (event) {
     const todoModal = document.getElementById("todoModal");
     const detailModal = document.getElementById("detailModal");
@@ -1467,7 +1348,7 @@ function showDebugInfo() {
   console.log("Projects Data Sample:", projectsData.slice(0, 5));
   console.log(
     "Department Data:",
-    Object.keys(departmentData).map((dept) => `${dept}: ${departmentData[dept].length} activities`)
+    Object.keys(departmentData).map((dept) => `${dept}: ${departmentData[dept].length} activities`),
   );
   console.log("Todo Data Sample:", todoData.slice(0, 5));
   console.log("Total Projects:", projectsData.length);
@@ -1481,6 +1362,9 @@ function showDebugInfo() {
     return acc;
   }, {});
   console.log("Status Breakdown:", statusBreakdown);
+
+  const categories = [...new Set(todoData.map((t) => t.category))].filter((c) => c !== "-");
+  console.log("Unique Categories:", categories);
 
   alert("Debug info logged to console. Press F12 to view.");
 }

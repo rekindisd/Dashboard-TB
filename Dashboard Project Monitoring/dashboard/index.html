@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
@@ -212,7 +212,7 @@
           <button class="view-all-btn" onclick="showDetailModal()">View All Projects <i class="fas fa-arrow-right"></i></button>
         </div>
 
-        <!-- ToDo Card -->
+        <!-- ToDo Card - IMPROVED -->
         <div class="todo-card">
           <div class="todo-header">
             <div class="todo-title">
@@ -220,7 +220,7 @@
               <span>To-Do List</span>
             </div>
 
-            <div class="todo-filters">
+            <div class="todo-filters-compact">
               <select id="departmentFilter" class="filter-select" onchange="applyFilters()">
                 <option value="all">All Departments</option>
                 <option value="Riset">Riset</option>
@@ -228,12 +228,8 @@
                 <option value="System Development">System Development</option>
               </select>
 
-              <select id="dueDateFilter" class="filter-select" onchange="applyFilters()">
-                <option value="all">All Tasks</option>
-                <option value="today">Today</option>
-                <option value="tomorrow">Tomorrow</option>
-                <option value="this-week">This Week</option>
-                <option value="overdue">Overdue</option>
+              <select id="categoryFilterHome" class="filter-select" onchange="applyFilters()">
+                <option value="all">All Categories</option>
               </select>
             </div>
           </div>
@@ -273,7 +269,7 @@
       </div>
     </div>
 
-    <!-- ToDo Modal -->
+    <!-- ToDo Modal - IMPROVED -->
     <div id="todoModal" class="modal">
       <div class="modal-content modal-large">
         <div class="modal-header">
@@ -283,25 +279,51 @@
           </button>
         </div>
         <div class="modal-body">
-          <div class="todo-tabs">
-            <button class="todo-tab active" data-tab="pending">
-              <i class="fas fa-calendar-check"></i> Pending
-              <span class="tab-count" id="pendingTabCount">(0)</span>
-            </button>
-            <button class="todo-tab" data-tab="progress">
-              <i class="fas fa-spinner"></i> In Progress
-              <span class="tab-count" id="progressTabCount">(0)</span>
-            </button>
-            <button class="todo-tab" data-tab="done">
-              <i class="fas fa-check-circle"></i> Completed
-              <span class="tab-count" id="doneTabCount">(0)</span>
-            </button>
+          <!-- Filter Section -->
+          <div class="modal-filters">
+            <div class="filter-group">
+              <label class="filter-label"> <i class="fas fa-filter"></i> Filter by Status </label>
+              <div class="filter-chips">
+                <button class="filter-chip-modal active" data-status="all" onclick="filterTodoModal('status', 'all')">All</button>
+                <button class="filter-chip-modal" data-status="Outstanding" onclick="filterTodoModal('status', 'Outstanding')"><i class="fas fa-clock"></i> Outstanding</button>
+                <button class="filter-chip-modal" data-status="In Progress" onclick="filterTodoModal('status', 'In Progress')"><i class="fas fa-spinner"></i> In Progress</button>
+                <button class="filter-chip-modal" data-status="Complete" onclick="filterTodoModal('status', 'Complete')"><i class="fas fa-check-circle"></i> Complete</button>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <label class="filter-label"> <i class="fas fa-tag"></i> Filter by Category </label>
+              <div class="filter-chips" id="categoryFilterChips">
+                <button class="filter-chip-modal active" data-category="all" onclick="filterTodoModal('category', 'all')">All Categories</button>
+              </div>
+            </div>
           </div>
 
-          <div class="todo-tab-content">
-            <div class="todo-tab-pane active" id="tabPending"></div>
-            <div class="todo-tab-pane" id="tabProgress"></div>
-            <div class="todo-tab-pane" id="tabDone"></div>
+          <!-- Tasks Container -->
+          <div class="tasks-stats">
+            <div class="stat-pill">
+              <i class="fas fa-list"></i>
+              <span>Total: <strong id="totalTasksCount">0</strong></span>
+            </div>
+            <div class="stat-pill">
+              <i class="fas fa-clock"></i>
+              <span>Outstanding: <strong id="outstandingTasksCount">0</strong></span>
+            </div>
+            <div class="stat-pill">
+              <i class="fas fa-spinner"></i>
+              <span>In Progress: <strong id="progressTasksCount">0</strong></span>
+            </div>
+            <div class="stat-pill">
+              <i class="fas fa-check-circle"></i>
+              <span>Complete: <strong id="completeTasksCount">0</strong></span>
+            </div>
+          </div>
+
+          <div id="todoModalContent" class="todo-modal-grid">
+            <div class="loading-state">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading tasks...</span>
+            </div>
           </div>
         </div>
       </div>
