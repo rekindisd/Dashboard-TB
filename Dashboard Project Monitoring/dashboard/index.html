@@ -131,8 +131,13 @@
             <span class="chart-period">Active</span>
           </div>
 
-          <div class="chart-body">
-            <canvas id="departmentPieChart"></canvas>
+          <div class="chart-body" id="chartBodyContainer">
+            <!-- Loading State for Chart - DIPERBAIKI SAMA DENGAN YANG LAIN -->
+            <div class="loading-state" id="chartLoadingState">
+              <i class="fas fa-spinner fa-spin"></i>
+              <span>Loading charts...</span>
+            </div>
+            <canvas id="departmentPieChart" style="display: none"></canvas>
           </div>
 
           <div class="chart-legend">
@@ -212,7 +217,7 @@
           <button class="view-all-btn" onclick="showDetailModal()">View All Projects <i class="fas fa-arrow-right"></i></button>
         </div>
 
-        <!-- ToDo Card - IMPROVED -->
+        <!-- ToDo Card - CATEGORY BASED DESIGN -->
         <div class="todo-card">
           <div class="todo-header">
             <div class="todo-title">
@@ -228,15 +233,18 @@
                 <option value="System Development">System Development</option>
               </select>
 
-              <select id="categoryFilterHome" class="filter-select" onchange="applyFilters()">
-                <option value="all">All Categories</option>
+              <select id="endDateFilter" class="filter-select" onchange="applyFilters()">
+                <option value="all">All Dates</option>
+                <option value="overdue">Overdue</option>
+                <option value="today">Today</option>
+                <option value="this-week">This Week</option>
+                <option value="this-month">This Month</option>
+                <option value="upcoming">Upcoming</option>
               </select>
             </div>
           </div>
 
-          <div class="todo-count-badge"><span id="todoCount">-</span> tasks pending</div>
-
-          <div class="todo-list" id="todoList">
+          <div class="todo-list-category" id="todoList">
             <div class="loading-state">
               <i class="fas fa-spinner fa-spin"></i>
               <span>Loading data from Google Sheets...</span>
@@ -269,7 +277,7 @@
       </div>
     </div>
 
-    <!-- ToDo Modal - IMPROVED -->
+    <!-- ToDo Modal - COMPLETELY REDESIGNED -->
     <div id="todoModal" class="modal">
       <div class="modal-content modal-large">
         <div class="modal-header">
@@ -285,16 +293,9 @@
               <label class="filter-label"> <i class="fas fa-filter"></i> Filter by Status </label>
               <div class="filter-chips">
                 <button class="filter-chip-modal active" data-status="all" onclick="filterTodoModal('status', 'all')">All</button>
-                <button class="filter-chip-modal" data-status="Outstanding" onclick="filterTodoModal('status', 'Outstanding')"><i class="fas fa-clock"></i> Outstanding</button>
-                <button class="filter-chip-modal" data-status="In Progress" onclick="filterTodoModal('status', 'In Progress')"><i class="fas fa-spinner"></i> In Progress</button>
                 <button class="filter-chip-modal" data-status="Complete" onclick="filterTodoModal('status', 'Complete')"><i class="fas fa-check-circle"></i> Complete</button>
-              </div>
-            </div>
-
-            <div class="filter-group">
-              <label class="filter-label"> <i class="fas fa-tag"></i> Filter by Category </label>
-              <div class="filter-chips" id="categoryFilterChips">
-                <button class="filter-chip-modal active" data-category="all" onclick="filterTodoModal('category', 'all')">All Categories</button>
+                <button class="filter-chip-modal" data-status="In Progress" onclick="filterTodoModal('status', 'In Progress')"><i class="fas fa-spinner"></i> In Progress</button>
+                <button class="filter-chip-modal" data-status="Outstanding" onclick="filterTodoModal('status', 'Outstanding')"><i class="fas fa-clock"></i> Outstanding</button>
               </div>
             </div>
           </div>
@@ -306,20 +307,20 @@
               <span>Total: <strong id="totalTasksCount">0</strong></span>
             </div>
             <div class="stat-pill">
-              <i class="fas fa-clock"></i>
-              <span>Outstanding: <strong id="outstandingTasksCount">0</strong></span>
+              <i class="fas fa-check-circle"></i>
+              <span>Complete: <strong id="completeTasksCount">0</strong></span>
             </div>
             <div class="stat-pill">
               <i class="fas fa-spinner"></i>
               <span>In Progress: <strong id="progressTasksCount">0</strong></span>
             </div>
             <div class="stat-pill">
-              <i class="fas fa-check-circle"></i>
-              <span>Complete: <strong id="completeTasksCount">0</strong></span>
+              <i class="fas fa-clock"></i>
+              <span>Outstanding: <strong id="outstandingTasksCount">0</strong></span>
             </div>
           </div>
 
-          <div id="todoModalContent" class="todo-modal-grid">
+          <div id="todoModalContent" class="todo-modal-grid-new">
             <div class="loading-state">
               <i class="fas fa-spinner fa-spin"></i>
               <span>Loading tasks...</span>

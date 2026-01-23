@@ -12,7 +12,7 @@ const PROJECTS_RANGE = "A:M";
 
 const TODO_SPREADSHEET_ID = "1OApZRZFEj-RgtyrFq2wrRCIdUX6Spk6Y-MrGc4fZSOM";
 const TODO_SHEET_NAME = "Sheet1";
-const TODO_RANGE = "A:I"; // Updated range to include new columns
+const TODO_RANGE = "A:I";
 
 const API_KEY = "AIzaSyA2aIyDp9P2NoxsH2efHpANcfKwsWL1RXw";
 
@@ -24,6 +24,7 @@ let currentActiveDepartment = "All";
 
 // Filter states for ToDo Modal
 let currentStatusFilter = "all";
+let currentDepartmentFilterTodo = "all";
 let currentCategoryFilter = "all";
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -68,7 +69,8 @@ async function loadProjectsData() {
 
 async function loadSheetData(sheetName, departmentName) {
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${PROJECTS_SPREADSHEET_ID}/values/${encodeURIComponent(sheetName)}!${PROJECTS_RANGE}?key=${API_KEY}`;
+    const timestamp = new Date().getTime();
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${PROJECTS_SPREADSHEET_ID}/values/${encodeURIComponent(sheetName)}!${PROJECTS_RANGE}?key=${API_KEY}&_=${timestamp}`;
 
     const response = await fetch(url);
     const data = await response.json();
@@ -167,7 +169,8 @@ async function loadSheetData(sheetName, departmentName) {
 
 async function loadTodoData() {
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${TODO_SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!${TODO_RANGE}?key=${API_KEY}`;
+    const timestamp = new Date().getTime();
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${TODO_SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!${TODO_RANGE}?key=${API_KEY}&_=${timestamp}`;
 
     const response = await fetch(url);
     const data = await response.json();
@@ -176,55 +179,66 @@ async function loadTodoData() {
       const headers = data.values[0];
       const rows = data.values.slice(1);
 
+      console.log("📋 Headers:", headers);
+      console.log("📋 Total rows:", rows.length);
+
       todoData = rows
-        .map((row) => ({
-          no: row[0] || "-",
-          tipe: row[1] || "-",
-          departemen: row[2] || "-",
-          category: row[3] || "-", // NEW: Category
-          item: row[4] || "-",
-          pic: row[5] || "-",
-          startDate: row[6] || "-", // NEW: Start Date
-          endDate: row[7] || "-", // NEW: End Date
-          status: normalizeStatus(row[8]), // Status moved to column 9
-        }))
-        .filter((task) => task.item !== "-" && task.item);
+        .map((row, index) => {
+          // PERBAIKAN: Pastikan category diambil dengan benar dan tidak kosong
+          let category = "Uncategorized";
+          if (row[3] && row[3] !== "-" && row[3].toString().trim() !== "") {
+            category = row[3].toString().trim();
+          }
+
+          const task = {
+            no: row[0] || "-",
+            tipe: row[1] || "-",
+            departemen: row[2] || "-",
+            category: category,
+            item: row[4] || "-",
+            pic: row[5] || "-",
+            startDate: row[6] || "-",
+            endDate: row[7] || "-",
+            status: normalizeStatus(row[8]),
+          };
+
+          // Debug logging untuk RKAP
+          if (row[3] && row[3].toString().toLowerCase().includes("rkap")) {
+            console.log(`🔍 FOUND RKAP at row ${index}:`, {
+              rawCategory: row[3],
+              category: task.category,
+              item: task.item,
+              departemen: task.departemen,
+            });
+          }
+
+          return task;
+        })
+        .filter((task) => {
+          const hasValidItem = task.item !== "-" && task.item && task.item.toString().trim() !== "";
+          if (!hasValidItem && task.category !== "Uncategorized") {
+            console.log(`⚠️ Filtered out task with category "${task.category}" - no valid item`);
+          }
+          return hasValidItem;
+        });
 
       console.log("✅ To-Do data loaded:", todoData.length, "items");
+      console.log("⏰ Loaded at:", new Date().toLocaleTimeString());
 
-      // Populate category filter
-      populateCategoryFilters();
+      // Log category distribution untuk debugging
+      const categoryDist = {};
+      todoData.forEach((task) => {
+        categoryDist[task.category] = (categoryDist[task.category] || 0) + 1;
+      });
+      console.log("📋 Category distribution:", categoryDist);
+
+      // Cari RKAP di hasil akhir
+      const rkapTasks = todoData.filter((t) => t.category.toLowerCase().includes("rkap"));
+      console.log("🔍 RKAP tasks in final data:", rkapTasks.length, rkapTasks);
     }
   } catch (error) {
     console.error("Error loading to-do data:", error);
     throw error;
-  }
-}
-
-function populateCategoryFilters() {
-  // Get unique categories
-  const categories = [...new Set(todoData.map((task) => task.category))].filter((cat) => cat !== "-").sort();
-
-  // Populate home filter
-  const homeFilter = document.getElementById("categoryFilterHome");
-  if (homeFilter) {
-    homeFilter.innerHTML = '<option value="all">All Categories</option>';
-    categories.forEach((cat) => {
-      const option = document.createElement("option");
-      option.value = cat;
-      option.textContent = cat;
-      homeFilter.appendChild(option);
-    });
-  }
-
-  // Populate modal filter
-  const modalFilterChips = document.getElementById("categoryFilterChips");
-  if (modalFilterChips) {
-    let html = '<button class="filter-chip-modal active" data-category="all" onclick="filterTodoModal(\'category\', \'all\')">All Categories</button>';
-    categories.forEach((cat) => {
-      html += `<button class="filter-chip-modal" data-category="${escapeHtml(cat)}" onclick="filterTodoModal('category', '${escapeHtml(cat)}')">${escapeHtml(cat)}</button>`;
-    });
-    modalFilterChips.innerHTML = html;
   }
 }
 
@@ -454,6 +468,7 @@ function updateProjectDetails(departmentFilter = "All") {
 function showDepartmentDetail(departmentName) {
   console.log("🔘 Clicked department:", departmentName);
   updateProjectDetails(departmentName);
+  // PERBAIKAN: TIDAK update todo list, hanya update project details
   updateLegendActiveStates();
 }
 
@@ -690,7 +705,7 @@ function formatDate(dateString) {
 
     if (isNaN(date.getTime())) return dateString;
 
-    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
     const day = date.getDate();
     const month = monthNames[date.getMonth()];
@@ -704,7 +719,7 @@ function formatDate(dateString) {
 }
 
 // ===================================
-// TODO LIST UPDATE - IMPROVED
+// TODO LIST UPDATE - CATEGORY BASED DESIGN - FIXED
 // ===================================
 
 function updateTodoList() {
@@ -717,46 +732,358 @@ function updateTodoList() {
 
   todoList.innerHTML = "";
 
-  todoData.forEach((task) => {
-    const todoItem = createTodoItem(task);
+  // PERBAIKAN: Filter berdasarkan department yang dipilih
+  let filteredTodoData = todoData;
+  if (currentDepartmentFilterTodo !== "all") {
+    filteredTodoData = todoData.filter((task) => task.departemen === currentDepartmentFilterTodo);
+  }
+
+  // Group tasks by category DENGAN URUTAN KEMUNCULAN
+  const tasksByCategory = {};
+  const categoryOrder = []; // Track urutan kemunculan
+
+  filteredTodoData.forEach((task) => {
+    const category = task.category;
+    if (!tasksByCategory[category]) {
+      tasksByCategory[category] = [];
+      categoryOrder.push(category); // Simpan urutan pertama kali muncul
+    }
+    tasksByCategory[category].push(task);
+  });
+
+  // PERBAIKAN: Sort - Uncategorized selalu di akhir, sisanya tetap urutan kemunculan
+  const categories = categoryOrder.sort((a, b) => {
+    // Uncategorized selalu paling akhir
+    if (a === "Uncategorized") return 1;
+    if (b === "Uncategorized") return -1;
+
+    // Sisanya pertahankan urutan kemunculan (stable sort)
+    return categoryOrder.indexOf(a) - categoryOrder.indexOf(b);
+  });
+
+  console.log("📋 Categories found (named categories first):", categories);
+  console.log("📋 Total categories:", categories.length);
+  console.log(
+    "📋 Category breakdown:",
+    categories.map((cat) => `${cat}: ${tasksByCategory[cat].length} tasks`),
+  );
+
+  // PERBAIKAN: Cek apakah RKAP ada
+  const hasRKAP = categories.some((cat) => cat.toLowerCase().includes("rkap"));
+  console.log("🔍 Has RKAP in categories?", hasRKAP);
+  if (hasRKAP) {
+    const rkapCategory = categories.find((cat) => cat.toLowerCase().includes("rkap"));
+    console.log("✅ RKAP category found:", rkapCategory, "with", tasksByCategory[rkapCategory].length, "tasks");
+    console.log("✅ RKAP position in list:", categories.indexOf(rkapCategory) + 1, "of", categories.length);
+  }
+
+  // Tampilkan maksimal 6 kategori untuk preview (agar Uncategorized juga muncul)
+  const displayCategories = categories.slice(0, 6);
+  const hasMoreCategories = categories.length > 6;
+
+  // PERBAIKAN: Hitung total tasks yang tidak ditampilkan
+  let hiddenTasksCount = 0;
+  if (hasMoreCategories) {
+    for (let i = 6; i < categories.length; i++) {
+      hiddenTasksCount += tasksByCategory[categories[i]].length;
+    }
+  }
+
+  console.log("📊 Displaying categories:", displayCategories);
+  console.log("📊 Hidden categories count:", categories.length - 5);
+  console.log("📊 Hidden tasks count:", hiddenTasksCount);
+
+  displayCategories.forEach((category) => {
+    const tasks = tasksByCategory[category];
+    const task = tasks[0];
+    const todoItem = createCategoryTodoItem(category, task, tasks.length);
     todoList.appendChild(todoItem);
   });
 
-  updateTodoCount();
+  // PERBAIKAN: Ubah indikator untuk menampilkan jumlah tasks, bukan categories
+  if (hasMoreCategories) {
+    const moreIndicator = document.createElement("div");
+    moreIndicator.className = "more-categories-indicator";
+    moreIndicator.innerHTML = `
+      <i class="fas fa-info-circle"></i>
+      <span>+${hiddenTasksCount} more tasks in ${categories.length - 6} categories. Click "View All Tasks" to see everything.</span>
+    `;
+    todoList.appendChild(moreIndicator);
+  }
 }
 
-function createTodoItem(task) {
+function createCategoryTodoItem(category, task, totalTasks) {
   const div = document.createElement("div");
-  div.className = "todo-item";
+  div.className = "todo-category-card";
+
+  const isComplete = task.status === "Complete";
+  if (isComplete) {
+    div.classList.add("completed");
+  }
 
   div.setAttribute("data-status", task.status);
   div.setAttribute("data-department", task.departemen);
-  div.setAttribute("data-category", task.category);
+  div.setAttribute("data-end-date", task.endDate);
+  div.setAttribute("data-category", category);
 
-  const isChecked = task.status === "Complete";
-  if (isChecked) {
-    div.classList.add("checked");
+  const statusClass = task.status.toLowerCase().replace(" ", "-");
+
+  const startDateFormatted = task.startDate !== "-" ? formatDateFull(task.startDate) : "-";
+  const endDateFormatted = task.endDate !== "-" ? formatDateFull(task.endDate) : "-";
+
+  let dateDisplayText = "";
+  let dateRangeText = "";
+
+  if (task.startDate === "-" && task.endDate === "-") {
+    dateDisplayText = "Not Started";
+    dateRangeText = "";
+  } else if (task.startDate !== "-" && task.endDate !== "-") {
+    dateDisplayText = "Scheduled";
+    dateRangeText = `${startDateFormatted} - ${endDateFormatted}`;
+  } else if (task.startDate !== "-") {
+    dateDisplayText = "Started";
+    dateRangeText = startDateFormatted;
+  } else {
+    dateDisplayText = "Deadline";
+    dateRangeText = endDateFormatted;
   }
 
-  const formattedItem = formatItemText(task.item);
+  const picName = task.pic && task.pic !== "-" ? task.pic : "Unassigned";
+  const itemText = task.item || "";
 
   div.innerHTML = `
-    <input type="checkbox" ${isChecked ? "checked" : ""} />
-    <div class="todo-item-content">
-      <div class="todo-item-title">${formattedItem}</div>
-      <div class="todo-item-meta">
-        <span class="todo-item-pic"><i class="fas fa-user"></i> ${escapeHtml(task.pic)}</span>
-        ${task.category !== "-" ? `<span class="todo-item-category"><i class="fas fa-tag"></i> ${escapeHtml(task.category)}</span>` : ""}
+    <div class="todo-category-header">
+      <div class="todo-category-left">
+        <div class="todo-category-checkbox ${isComplete ? "checked" : ""}">
+          ${isComplete ? '<i class="fas fa-check"></i>' : ""}
+        </div>
+        <div class="todo-category-info">
+          <h4 class="todo-category-title ${isComplete ? "strikethrough" : ""}">${escapeHtml(category)}</h4>
+          <p class="todo-category-subtitle">${escapeHtml(task.departemen)}</p>
+        </div>
       </div>
-      <span class="todo-item-status status-${task.status.toLowerCase().replace(" ", "-")}">${task.status}</span>
+    </div>
+    
+    <div class="todo-category-preview">
+      <p class="preview-text">${escapeHtml(itemText)}</p>
+    </div>
+    
+    <div class="todo-category-footer">
+      <div class="todo-category-date">
+        <i class="fas fa-calendar"></i>
+        <span class="date-label">${dateDisplayText}</span>
+        ${dateRangeText ? `<span class="todo-date-time">${dateRangeText}</span>` : ""}
+      </div>
+    </div>
+    <div class="todo-category-pic">
+      <i class="fas fa-user"></i>
+      <span class="pic-name">${escapeHtml(picName)}</span>
+      ${totalTasks > 1 ? `<span class="task-count">+${totalTasks - 1} more</span>` : ""}
     </div>
   `;
 
-  div.onclick = function () {
-    toggleTodoItem(this);
-  };
+  // PERBAIKAN: Saat klik category card, bawa filter department yang aktif
+  div.addEventListener("click", () => {
+    showCategoryDetailModal(category);
+  });
 
   return div;
+}
+
+function getInitials(name) {
+  if (!name || name === "-") return "?";
+
+  const words = name.trim().split(" ");
+  if (words.length === 1) {
+    return words[0].substring(0, 2).toUpperCase();
+  }
+
+  return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+}
+
+function formatDateFull(dateString) {
+  if (!dateString || dateString === "-") return "-";
+
+  try {
+    let date;
+    if (dateString.includes("/")) {
+      const parts = dateString.split("/");
+      if (parts.length === 3) {
+        const day = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1;
+        const year = parseInt(parts[2]);
+        date = new Date(year, month, day);
+      }
+    } else {
+      date = new Date(dateString);
+    }
+
+    if (isNaN(date.getTime())) return dateString;
+
+    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    const day = date.getDate().toString().padStart(2, "0");
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+
+    return `${day} ${month} ${year}`;
+  } catch (e) {
+    return dateString;
+  }
+}
+
+function formatDateShort(dateString) {
+  if (!dateString || dateString === "-") return "-";
+
+  try {
+    let date;
+    if (dateString.includes("/")) {
+      const parts = dateString.split("/");
+      if (parts.length === 3) {
+        const day = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1;
+        const year = parseInt(parts[2]);
+        date = new Date(year, month, day);
+      }
+    } else {
+      date = new Date(dateString);
+    }
+
+    if (isNaN(date.getTime())) return dateString;
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = monthNames[date.getMonth()];
+    const day = date.getDate();
+
+    return `${month} ${day}`;
+  } catch (e) {
+    return dateString;
+  }
+}
+
+function showCategoryDetailModal(category) {
+  // PERBAIKAN: Filter tasks berdasarkan category DAN department yang aktif
+  let categoryTasks = todoData.filter((task) => {
+    return task.category === category;
+  });
+
+  // Apply department filter jika ada
+  if (currentDepartmentFilterTodo !== "all") {
+    categoryTasks = categoryTasks.filter((task) => task.departemen === currentDepartmentFilterTodo);
+  }
+
+  if (categoryTasks.length === 0) {
+    console.error("No tasks found for category:", category);
+    return;
+  }
+
+  const modal = document.getElementById("todoModal");
+  if (!modal) return;
+
+  // Update modal title
+  const modalTitle = modal.querySelector(".modal-header h2");
+  modalTitle.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <i class="fas fa-folder-open"></i> ${escapeHtml(category)}
+      <span style="font-size: 14px; font-weight: 600; color: var(--text-secondary); margin-left: 8px;">
+        • ${categoryTasks.length} task${categoryTasks.length > 1 ? "s" : ""}
+      </span>
+    </div>
+  `;
+
+  // PERBAIKAN: Tampilkan filters dengan filter status
+  const filtersDiv = modal.querySelector(".modal-filters");
+  if (filtersDiv) {
+    filtersDiv.innerHTML = `
+      <div class="filter-group">
+        <label class="filter-label"> <i class="fas fa-filter"></i> Filter by Status </label>
+        <div class="filter-chips">
+          <button class="filter-chip-modal active" data-status="all" onclick="filterCategoryTasks('all')">All</button>
+          <button class="filter-chip-modal" data-status="Complete" onclick="filterCategoryTasks('Complete')"><i class="fas fa-check-circle"></i> Complete</button>
+          <button class="filter-chip-modal" data-status="In Progress" onclick="filterCategoryTasks('In Progress')"><i class="fas fa-spinner"></i> In Progress</button>
+          <button class="filter-chip-modal" data-status="Outstanding" onclick="filterCategoryTasks('Outstanding')"><i class="fas fa-clock"></i> Outstanding</button>
+        </div>
+      </div>
+    `;
+    filtersDiv.style.display = "flex";
+  }
+
+  // Reset status filter
+  currentStatusFilter = "all";
+
+  // Update stats
+  const totalCount = categoryTasks.length;
+  const completeCount = categoryTasks.filter((t) => t.status === "Complete").length;
+  const progressCount = categoryTasks.filter((t) => t.status === "In Progress").length;
+  const outstandingCount = categoryTasks.filter((t) => t.status === "Outstanding").length;
+
+  document.getElementById("totalTasksCount").textContent = totalCount;
+  document.getElementById("completeTasksCount").textContent = completeCount;
+  document.getElementById("progressTasksCount").textContent = progressCount;
+  document.getElementById("outstandingTasksCount").textContent = outstandingCount;
+
+  // Store category for filtering
+  window.currentCategoryForModal = category;
+
+  // Render tasks
+  const content = document.getElementById("todoModalContent");
+  if (categoryTasks.length === 0) {
+    content.innerHTML = '<div class="no-data">No tasks found in this category</div>';
+  } else {
+    content.innerHTML = categoryTasks.map((task) => createTodoModalCard(task)).join("");
+  }
+
+  modal.classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+
+// PERBAIKAN: Function baru untuk filter tasks dalam category modal
+function filterCategoryTasks(status) {
+  currentStatusFilter = status;
+
+  // Update active button
+  document.querySelectorAll(".filter-chip-modal[data-status]").forEach((btn) => {
+    if (btn.getAttribute("data-status") === status) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+
+  // Get base category tasks
+  let categoryTasks = todoData.filter((task) => {
+    return task.category === window.currentCategoryForModal;
+  });
+
+  // Apply department filter
+  if (currentDepartmentFilterTodo !== "all") {
+    categoryTasks = categoryTasks.filter((task) => task.departemen === currentDepartmentFilterTodo);
+  }
+
+  // PERBAIKAN: Stats dihitung dari tasks yang SUDAH difilter by status
+  let displayTasks = categoryTasks;
+  if (status !== "all") {
+    displayTasks = categoryTasks.filter((task) => task.status === status);
+  }
+
+  // Update stats berdasarkan filtered tasks
+  const totalCount = displayTasks.length;
+  const completeCount = displayTasks.filter((t) => t.status === "Complete").length;
+  const progressCount = displayTasks.filter((t) => t.status === "In Progress").length;
+  const outstandingCount = displayTasks.filter((t) => t.status === "Outstanding").length;
+
+  document.getElementById("totalTasksCount").textContent = totalCount;
+  document.getElementById("completeTasksCount").textContent = completeCount;
+  document.getElementById("progressTasksCount").textContent = progressCount;
+  document.getElementById("outstandingTasksCount").textContent = outstandingCount;
+
+  // Render filtered tasks
+  const content = document.getElementById("todoModalContent");
+  if (displayTasks.length === 0) {
+    content.innerHTML = '<div class="no-data">No tasks found with the selected filter</div>';
+  } else {
+    content.innerHTML = displayTasks.map((task) => createTodoModalCard(task)).join("");
+  }
 }
 
 function formatItemText(text) {
@@ -772,11 +1099,13 @@ function escapeHtml(text) {
 }
 
 // ===================================
-// CHART INITIALIZATION
+// CHART INITIALIZATION WITH LOADING STATE
 // ===================================
 
 function initializeDepartmentChart() {
   const ctx = document.getElementById("departmentPieChart");
+  const loadingState = document.getElementById("chartLoadingState");
+
   if (!ctx) return;
 
   const projectGroups = {};
@@ -808,151 +1137,201 @@ function initializeDepartmentChart() {
     departmentPieChart.destroy();
   }
 
-  departmentPieChart = new Chart(ctx, {
-    type: "doughnut",
-    data: {
-      labels: ["Riset", "Digitalisasi", "System Development"],
-      datasets: [
-        {
-          data: [risetCount, digitalisasiCount, systemCount],
-          backgroundColor: ["#8b5cf6", "#3b82f6", "#10b981"],
-          borderWidth: 2,
-          borderColor: "#ffffff",
-          hoverOffset: 8,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      onClick: (event, activeElements) => {
-        if (activeElements.length > 0) {
-          const index = activeElements[0].index;
-          const departmentNames = ["Riset", "Digitalisasi", "System Development"];
-          const clickedDepartment = departmentNames[index];
-          showDepartmentDetail(clickedDepartment);
-        }
+  setTimeout(() => {
+    departmentPieChart = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels: ["Riset", "Digitalisasi", "System Development"],
+        datasets: [
+          {
+            data: [risetCount, digitalisasiCount, systemCount],
+            backgroundColor: ["#8b5cf6", "#3b82f6", "#10b981"],
+            borderWidth: 2,
+            borderColor: "#ffffff",
+            hoverOffset: 8,
+          },
+        ],
       },
-      plugins: {
-        legend: {
-          display: false,
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (event, activeElements) => {
+          if (activeElements.length > 0) {
+            const index = activeElements[0].index;
+            const departmentNames = ["Riset", "Digitalisasi", "System Development"];
+            const clickedDepartment = departmentNames[index];
+            showDepartmentDetail(clickedDepartment);
+          }
         },
-        tooltip: {
-          enabled: true,
-          backgroundColor: "rgba(0, 0, 0, 0.9)",
-          padding: 16,
-          titleFont: {
-            size: 15,
-            weight: "bold",
-            family: "Outfit",
+        plugins: {
+          legend: {
+            display: false,
           },
-          bodyFont: {
-            size: 14,
-            family: "Manrope",
-          },
-          callbacks: {
-            label: function (context) {
-              const label = context.label || "";
-              const value = context.parsed || 0;
-              return `${label}: ${value} projects`;
+          tooltip: {
+            enabled: true,
+            backgroundColor: "rgba(0, 0, 0, 0.9)",
+            padding: 16,
+            titleFont: {
+              size: 15,
+              weight: "bold",
+              family: "Outfit",
+            },
+            bodyFont: {
+              size: 14,
+              family: "Manrope",
+            },
+            callbacks: {
+              label: function (context) {
+                const label = context.label || "";
+                const value = context.parsed || 0;
+                return `${label}: ${value} projects`;
+              },
             },
           },
         },
+        cutout: "0%",
+        animation: {
+          animateRotate: true,
+          animateScale: false,
+          duration: 1000,
+          easing: "easeInOutQuart",
+        },
+        interaction: {
+          mode: "nearest",
+          intersect: true,
+        },
       },
-      cutout: "0%",
-      animation: {
-        animateRotate: true,
-        animateScale: false,
-        duration: 1000,
-        easing: "easeInOutQuart",
-      },
-      interaction: {
-        mode: "nearest",
-        intersect: true,
-      },
-    },
-  });
+    });
 
-  updateLegendActiveStates();
+    loadingState.style.display = "none";
+    ctx.style.display = "block";
+
+    updateLegendActiveStates();
+  }, 800);
 }
 
 // ===================================
-// TODO LIST INTERACTIONS
-// ===================================
-
-function toggleTodoItem(element) {
-  const checkbox = element.querySelector('input[type="checkbox"]');
-  checkbox.checked = !checkbox.checked;
-
-  if (checkbox.checked) {
-    element.classList.add("checked");
-  } else {
-    element.classList.remove("checked");
-  }
-
-  updateTodoCount();
-}
-
-function updateTodoCount() {
-  const todoList = document.getElementById("todoList");
-  if (!todoList) return;
-
-  const visibleItems = todoList.querySelectorAll(".todo-item:not(.hidden)");
-  const uncheckedCount = Array.from(visibleItems).filter((item) => {
-    const checkbox = item.querySelector('input[type="checkbox"]');
-    return checkbox && !checkbox.checked;
-  }).length;
-
-  const todoCountEl = document.getElementById("todoCount");
-  if (todoCountEl) {
-    todoCountEl.textContent = uncheckedCount;
-  }
-
-  const badge = document.querySelector(".todo-count-badge");
-  const deptFilter = document.getElementById("departmentFilter")?.value || "all";
-  const catFilter = document.getElementById("categoryFilterHome")?.value || "all";
-
-  let filterText = "";
-  if (deptFilter !== "all" || catFilter !== "all") {
-    const filters = [];
-    if (deptFilter !== "all") filters.push(deptFilter);
-    if (catFilter !== "all") filters.push(catFilter);
-    filterText = ` (${filters.join(", ")})`;
-  }
-
-  if (badge) {
-    badge.innerHTML = `<span id="todoCount">${uncheckedCount}</span> tasks pending${filterText}`;
-  }
-}
-
-// ===================================
-// TODO FILTER
+// TODO FILTER WITH END DATE - CATEGORY BASED
 // ===================================
 
 function applyFilters() {
   const departmentFilter = document.getElementById("departmentFilter").value;
-  const categoryFilter = document.getElementById("categoryFilterHome").value;
+  const endDateFilter = document.getElementById("endDateFilter").value;
 
-  const todoList = document.getElementById("todoList");
-  if (!todoList) return;
+  // PERBAIKAN: Update currentDepartmentFilterTodo
+  currentDepartmentFilterTodo = departmentFilter;
 
-  const todoItems = todoList.querySelectorAll(".todo-item");
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  todoItems.forEach((item) => {
-    const itemDept = item.getAttribute("data-department");
-    const itemCategory = item.getAttribute("data-category");
+  let filteredData = todoData;
 
-    let passDeptFilter = departmentFilter === "all" || itemDept === departmentFilter;
-    let passCategoryFilter = categoryFilter === "all" || itemCategory === categoryFilter;
+  // Apply department filter
+  if (departmentFilter !== "all") {
+    filteredData = filteredData.filter((task) => task.departemen === departmentFilter);
+  }
 
-    if (passDeptFilter && passCategoryFilter) {
-      item.classList.remove("hidden");
-    } else {
-      item.classList.add("hidden");
+  // Apply end date filter
+  if (endDateFilter !== "all") {
+    filteredData = filteredData.filter((task) => {
+      if (task.endDate === "-") return false;
+
+      const endDate = parseDate(task.endDate);
+      if (!endDate) return false;
+
+      const diffTime = endDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      switch (endDateFilter) {
+        case "overdue":
+          return diffDays < 0;
+        case "today":
+          return diffDays === 0;
+        case "this-week":
+          return diffDays >= 0 && diffDays <= 7;
+        case "this-month":
+          return diffDays >= 0 && diffDays <= 30;
+        case "upcoming":
+          return diffDays > 30;
+        default:
+          return true;
+      }
+    });
+  }
+
+  // Group by category DENGAN URUTAN KEMUNCULAN
+  const tasksByCategory = {};
+  const categoryOrder = [];
+
+  filteredData.forEach((task) => {
+    const category = task.category;
+    if (!tasksByCategory[category]) {
+      tasksByCategory[category] = [];
+      categoryOrder.push(category);
     }
+    tasksByCategory[category].push(task);
   });
 
-  updateTodoCount();
+  // PERBAIKAN: Sort - Uncategorized selalu di akhir
+  const sortedCategories = categoryOrder.sort((a, b) => {
+    if (a === "Uncategorized") return 1;
+    if (b === "Uncategorized") return -1;
+    return categoryOrder.indexOf(a) - categoryOrder.indexOf(b);
+  });
+
+  const categories = sortedCategories.slice(0, 6);
+  const hasMoreCategories = sortedCategories.length > 6;
+
+  // PERBAIKAN: Hitung total tasks yang tidak ditampilkan
+  let hiddenTasksCount = 0;
+  if (hasMoreCategories) {
+    for (let i = 6; i < sortedCategories.length; i++) {
+      hiddenTasksCount += tasksByCategory[sortedCategories[i]].length;
+    }
+  }
+
+  const todoList = document.getElementById("todoList");
+  todoList.innerHTML = "";
+
+  if (categories.length === 0) {
+    todoList.innerHTML = '<div class="no-data">No tasks found with selected filters</div>';
+  } else {
+    categories.forEach((category) => {
+      const tasks = tasksByCategory[category];
+      const task = tasks[0];
+      const todoItem = createCategoryTodoItem(category, task, tasks.length);
+      todoList.appendChild(todoItem);
+    });
+
+    if (hasMoreCategories) {
+      const moreIndicator = document.createElement("div");
+      moreIndicator.className = "more-categories-indicator";
+      moreIndicator.innerHTML = `
+        <i class="fas fa-info-circle"></i>
+        <span>+${hiddenTasksCount} more tasks in ${sortedCategories.length - 6} categories. Click "View All Tasks" to see everything.</span>
+      `;
+      todoList.appendChild(moreIndicator);
+    }
+  }
+}
+
+function parseDate(dateString) {
+  if (!dateString || dateString === "-") return null;
+
+  try {
+    if (dateString.includes("/")) {
+      const parts = dateString.split("/");
+      if (parts.length === 3) {
+        const day = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1;
+        const year = parseInt(parts[2]);
+        return new Date(year, month, day);
+      }
+    }
+    return new Date(dateString);
+  } catch (e) {
+    return null;
+  }
 }
 
 // ===================================
@@ -1144,7 +1523,7 @@ function filterDetailModal() {
 }
 
 // ===================================
-// TODO MODAL FUNCTIONS - IMPROVED
+// TODO MODAL FUNCTIONS - COMPLETELY REDESIGNED
 // ===================================
 
 function showTodoModal() {
@@ -1153,7 +1532,6 @@ function showTodoModal() {
     modal.classList.add("show");
     document.body.style.overflow = "hidden";
 
-    // Reset filters
     currentStatusFilter = "all";
     currentCategoryFilter = "all";
 
@@ -1166,6 +1544,34 @@ function closeTodoModal() {
   if (modal) {
     modal.classList.remove("show");
     document.body.style.overflow = "auto";
+
+    const modalTitle = modal.querySelector(".modal-header h2");
+    modalTitle.innerHTML = '<i class="fas fa-tasks"></i> Task Management';
+
+    const filtersDiv = modal.querySelector(".modal-filters");
+    if (filtersDiv) {
+      filtersDiv.style.display = "flex";
+    }
+
+    currentStatusFilter = "all";
+    currentCategoryFilter = "all";
+    window.currentCategoryForModal = null;
+
+    document.querySelectorAll("[data-status]").forEach((btn) => {
+      if (btn.getAttribute("data-status") === "all") {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+
+    document.querySelectorAll("[data-category]").forEach((btn) => {
+      if (btn.getAttribute("data-category") === "all") {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
   }
 }
 
@@ -1173,8 +1579,7 @@ function filterTodoModal(filterType, value) {
   if (filterType === "status") {
     currentStatusFilter = value;
 
-    // Update active button
-    document.querySelectorAll("[data-status]").forEach((btn) => {
+    document.querySelectorAll(".filter-chip-modal[data-status]").forEach((btn) => {
       if (btn.getAttribute("data-status") === value) {
         btn.classList.add("active");
       } else {
@@ -1184,8 +1589,7 @@ function filterTodoModal(filterType, value) {
   } else if (filterType === "category") {
     currentCategoryFilter = value;
 
-    // Update active button
-    document.querySelectorAll("[data-category]").forEach((btn) => {
+    document.querySelectorAll(".filter-chip-modal[data-category]").forEach((btn) => {
       if (btn.getAttribute("data-category") === value) {
         btn.classList.add("active");
       } else {
@@ -1198,38 +1602,91 @@ function filterTodoModal(filterType, value) {
 }
 
 function updateTodoModalContent() {
-  let filteredTasks = todoData;
+  // PERBAIKAN: Filter berdasarkan department yang aktif
+  let baseFilteredTasks = todoData;
 
-  // Apply status filter
+  if (currentDepartmentFilterTodo !== "all") {
+    baseFilteredTasks = todoData.filter((task) => task.departemen === currentDepartmentFilterTodo);
+  }
+
+  // Apply filters untuk display
+  let displayTasks = baseFilteredTasks;
+
   if (currentStatusFilter !== "all") {
-    filteredTasks = filteredTasks.filter((task) => task.status === currentStatusFilter);
+    displayTasks = displayTasks.filter((task) => task.status === currentStatusFilter);
   }
 
-  // Apply category filter
   if (currentCategoryFilter !== "all") {
-    filteredTasks = filteredTasks.filter((task) => task.category === currentCategoryFilter);
+    displayTasks = displayTasks.filter((task) => task.category === currentCategoryFilter);
   }
 
-  // Update stats
-  const totalCount = filteredTasks.length;
-  const outstandingCount = filteredTasks.filter((t) => t.status === "Outstanding").length;
-  const progressCount = filteredTasks.filter((t) => t.status === "In Progress").length;
-  const completeCount = filteredTasks.filter((t) => t.status === "Complete").length;
+  // PERBAIKAN: Stats dihitung dari tasks yang sudah difilter (display tasks)
+  const totalCount = displayTasks.length;
+  const completeCount = displayTasks.filter((t) => t.status === "Complete").length;
+  const progressCount = displayTasks.filter((t) => t.status === "In Progress").length;
+  const outstandingCount = displayTasks.filter((t) => t.status === "Outstanding").length;
 
   document.getElementById("totalTasksCount").textContent = totalCount;
-  document.getElementById("outstandingTasksCount").textContent = outstandingCount;
-  document.getElementById("progressTasksCount").textContent = progressCount;
   document.getElementById("completeTasksCount").textContent = completeCount;
+  document.getElementById("progressTasksCount").textContent = progressCount;
+  document.getElementById("outstandingTasksCount").textContent = outstandingCount;
 
-  // Render tasks
   const content = document.getElementById("todoModalContent");
 
-  if (filteredTasks.length === 0) {
+  if (displayTasks.length === 0) {
     content.innerHTML = '<div class="no-data">No tasks found with the selected filters</div>';
     return;
   }
 
-  content.innerHTML = filteredTasks.map((task) => createTodoModalCard(task)).join("");
+  content.innerHTML = displayTasks.map((task) => createTodoModalCard(task)).join("");
+
+  // PERBAIKAN: Update filters untuk menampilkan kategori yang tersedia
+  const filtersDiv = document.querySelector(".modal-filters");
+  if (filtersDiv && !window.currentCategoryForModal) {
+    // Get unique categories from base filtered data (before status/category filter)
+    const categoryOrder = [];
+    const categoriesSet = new Set();
+
+    baseFilteredTasks.forEach((task) => {
+      if (!categoriesSet.has(task.category)) {
+        categoriesSet.add(task.category);
+        categoryOrder.push(task.category);
+      }
+    });
+
+    // PERBAIKAN: Sort categories - Uncategorized di akhir
+    const sortedCategories = categoryOrder.sort((a, b) => {
+      if (a === "Uncategorized") return 1;
+      if (b === "Uncategorized") return -1;
+      return categoryOrder.indexOf(a) - categoryOrder.indexOf(b);
+    });
+
+    filtersDiv.innerHTML = `
+      <div class="filter-group">
+        <label class="filter-label"> <i class="fas fa-filter"></i> Filter by Status </label>
+        <div class="filter-chips">
+          <button class="filter-chip-modal ${currentStatusFilter === "all" ? "active" : ""}" data-status="all" onclick="filterTodoModal('status', 'all')">All</button>
+          <button class="filter-chip-modal ${currentStatusFilter === "Complete" ? "active" : ""}" data-status="Complete" onclick="filterTodoModal('status', 'Complete')"><i class="fas fa-check-circle"></i> Complete</button>
+          <button class="filter-chip-modal ${currentStatusFilter === "In Progress" ? "active" : ""}" data-status="In Progress" onclick="filterTodoModal('status', 'In Progress')"><i class="fas fa-spinner"></i> In Progress</button>
+          <button class="filter-chip-modal ${currentStatusFilter === "Outstanding" ? "active" : ""}" data-status="Outstanding" onclick="filterTodoModal('status', 'Outstanding')"><i class="fas fa-clock"></i> Outstanding</button>
+        </div>
+      </div>
+      
+      <div class="filter-group">
+        <label class="filter-label"> <i class="fas fa-tag"></i> Filter by Category </label>
+        <div class="filter-chips" style="max-height: 120px; overflow-y: auto; padding: 4px;">
+          <button class="filter-chip-modal ${currentCategoryFilter === "all" ? "active" : ""}" data-category="all" onclick="filterTodoModal('category', 'all')">All Categories</button>
+          ${sortedCategories
+            .map(
+              (cat) => `
+            <button class="filter-chip-modal ${currentCategoryFilter === cat ? "active" : ""}" data-category="${escapeHtml(cat)}" onclick="filterTodoModal('category', '${escapeHtml(cat)}')">${escapeHtml(cat)}</button>
+          `,
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
 }
 
 function createTodoModalCard(task) {
@@ -1237,66 +1694,72 @@ function createTodoModalCard(task) {
   const statusIcon = task.status === "Complete" ? "fa-check-circle" : task.status === "In Progress" ? "fa-spinner" : "fa-clock";
 
   return `
-    <div class="todo-card-modal">
-      <div class="todo-card-header">
-        <div class="todo-card-status status-${statusClass}">
+    <div class="todo-card-redesigned">
+      <div class="todo-card-header-new">
+        <div class="todo-status-badge-new status-${statusClass}">
           <i class="fas ${statusIcon}"></i>
           <span>${task.status}</span>
         </div>
-        ${task.category !== "-" ? `<div class="todo-card-category"><i class="fas fa-tag"></i> ${escapeHtml(task.category)}</div>` : ""}
+        <div class="todo-card-dept-badge">
+          <i class="fas fa-building"></i>
+          ${escapeHtml(task.departemen)}
+        </div>
       </div>
       
-      <div class="todo-card-body">
-        <h4 class="todo-card-title">${formatItemText(task.item)}</h4>
+      <div class="todo-card-body-new">
+        <h3 class="todo-card-title-new">${formatItemText(task.item)}</h3>
         
-        <div class="todo-card-info-grid">
-          <div class="info-item">
-            <span class="info-icon"><i class="fas fa-hashtag"></i></span>
-            <div class="info-content">
-              <span class="info-label">No</span>
-              <span class="info-value">${escapeHtml(task.no)}</span>
-            </div>
+        <!-- PERBAIKAN: Category dipindah ke atas, full width seperti timeline -->
+        <div class="todo-card-category-full">
+          <div class="category-icon-new">
+            <i class="fas fa-tag"></i>
           </div>
-          
-          <div class="info-item">
-            <span class="info-icon"><i class="fas fa-tag"></i></span>
-            <div class="info-content">
-              <span class="info-label">Tipe</span>
-              <span class="info-value">${escapeHtml(task.tipe)}</span>
-            </div>
-          </div>
-          
-          <div class="info-item">
-            <span class="info-icon"><i class="fas fa-building"></i></span>
-            <div class="info-content">
-              <span class="info-label">Departemen</span>
-              <span class="info-value">${escapeHtml(task.departemen)}</span>
-            </div>
-          </div>
-          
-          <div class="info-item">
-            <span class="info-icon"><i class="fas fa-user"></i></span>
-            <div class="info-content">
-              <span class="info-label">PIC</span>
-              <span class="info-value">${escapeHtml(task.pic)}</span>
-            </div>
+          <div class="category-content-new">
+            <div class="category-label-new">Category</div>
+            <div class="category-value-new">${escapeHtml(task.category)}</div>
           </div>
         </div>
         
-        <div class="todo-card-timeline">
-          <div class="timeline-item">
-            <i class="fas fa-calendar-check"></i>
-            <div class="timeline-content">
-              <span class="timeline-label">Start Date</span>
-              <span class="timeline-value">${task.startDate !== "-" ? formatDate(task.startDate) : "Not set"}</span>
+        <div class="todo-card-info-grid">
+          <div class="info-item-new">
+            <div class="info-label-new">
+              <i class="fas fa-bookmark"></i>
+              Tipe
+            </div>
+            <div class="info-value-new">${escapeHtml(task.tipe)}</div>
+          </div>
+          
+          <div class="info-item-new">
+            <div class="info-label-new">
+              <i class="fas fa-user"></i>
+              PIC
+            </div>
+            <div class="info-value-new">${escapeHtml(task.pic)}</div>
+          </div>
+        </div>
+        
+        <div class="todo-timeline-new">
+          <div class="timeline-item-new">
+            <div class="timeline-icon-new">
+              <i class="fas fa-play-circle"></i>
+            </div>
+            <div class="timeline-content-new">
+              <div class="timeline-label-new">Start Date</div>
+              <div class="timeline-value-new">${task.startDate !== "-" ? formatDate(task.startDate) : "Not set"}</div>
             </div>
           </div>
-          <div class="timeline-separator">→</div>
-          <div class="timeline-item">
-            <i class="fas fa-calendar-times"></i>
-            <div class="timeline-content">
-              <span class="timeline-label">End Date</span>
-              <span class="timeline-value">${task.endDate !== "-" ? formatDate(task.endDate) : "Not set"}</span>
+          
+          <div class="timeline-divider-new">
+            <i class="fas fa-arrow-right"></i>
+          </div>
+          
+          <div class="timeline-item-new">
+            <div class="timeline-icon-new">
+              <i class="fas fa-flag-checkered"></i>
+            </div>
+            <div class="timeline-content-new">
+              <div class="timeline-label-new">End Date</div>
+              <div class="timeline-value-new">${task.endDate !== "-" ? formatDate(task.endDate) : "Not set"}</div>
             </div>
           </div>
         </div>
@@ -1363,8 +1826,9 @@ function showDebugInfo() {
   }, {});
   console.log("Status Breakdown:", statusBreakdown);
 
-  const categories = [...new Set(todoData.map((t) => t.category))].filter((c) => c !== "-");
+  const categories = [...new Set(todoData.map((t) => t.category))];
   console.log("Unique Categories:", categories);
+  console.log("Current Department Filter:", currentDepartmentFilterTodo);
 
   alert("Debug info logged to console. Press F12 to view.");
 }
